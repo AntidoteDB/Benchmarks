@@ -31,10 +31,9 @@
 -record(state, {worker_id,
                 time,
                 type_dict,
-		last_read,
+		            last_read,
                 pb_pid,
-		        num_partitions,
-		        set_size,
+		            set_size,
                 commit_time,
                 num_reads,
                 num_updates,
@@ -43,15 +42,15 @@
                 measure_staleness,
                 temp_num_reads,
                 temp_num_updates,
-    sequential_reads,
-    sequential_writes}).
+                sequential_reads,
+                sequential_writes}).
 
 %% ====================================================================
 %% API
 %% ====================================================================
 
 new(Id) ->
-    
+
     rand_compat:seed(time_compat:timestamp()),
 
     IPs = basho_bench_config:get(antidote_pb_ips),
@@ -60,7 +59,6 @@ new(Id) ->
     SetSize = basho_bench_config:get(set_size),
     NumUpdates  = basho_bench_config:get(num_updates),
     NumReads = basho_bench_config:get(num_reads),
-    NumPartitions = basho_bench_config:get(num_vnodes),
     MeasureStaleness = basho_bench_config:get(staleness),
     SequentialReads = basho_bench_config:get(sequential_reads),
     SequentialWrites = basho_bench_config:get(sequential_writes),
@@ -75,7 +73,6 @@ new(Id) ->
         pb_pid = Pid,
         last_read = {undefined, undefined},
         set_size = SetSize,
-        num_partitions = NumPartitions,
         type_dict = TypeDict, pb_port = TargetPort,
         target_node = TargetNode, commit_time = ignore,
         num_reads = NumReads, num_updates = NumUpdates,
