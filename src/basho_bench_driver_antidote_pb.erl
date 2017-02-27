@@ -51,15 +51,7 @@
 %% ====================================================================
 
 new(Id) ->
-    %% Make sure bitcask is available
-    case code:which(antidote) of
-        non_existing ->
-            ?FAIL_MSG("~s requires antidote to be available on code path.\n",
-                      [?MODULE]);
-        _ ->
-            ok
-    end,
-
+    
     rand_compat:seed(time_compat:timestamp()),
 
     IPs = basho_bench_config:get(antidote_pb_ips),
@@ -311,10 +303,10 @@ get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
                 decrement->
                     [{{BKey, Type, ?BUCKET}, decrement, 1}]
             end;
-    
+
         RegisterType when ((RegisterType==antidote_crdt_mvreg) orelse (RegisterType==antidote_crdt_lwwreg))->
             [{{BKey, Type, ?BUCKET}, assign, NewVal}];
-        
+
         SetType when ((SetType==antidote_crdt_orset) orelse (SetType==antidote_crdt_set_rw))->
             Set=
                 case Obj of
