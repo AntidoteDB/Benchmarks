@@ -14,6 +14,9 @@ compile: deps
 clean:
 	${REBAR} clean
 
+runbench:
+	_build/default/bin/basho_bench examples/antidote_pb.config
+
 results:
 	Rscript --vanilla priv/summary.r -i tests/current
 
