@@ -289,7 +289,7 @@ get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
             Value
     end,
     case Type of
-        antidote_crdt_counter->
+        antidote_crdt_counter_pn->
             case lists:nth(Num, Params) of
                 {increment, Ammount}->
                     [{{BKey, Type, ?BUCKET}, increment, Ammount}];
@@ -301,10 +301,10 @@ get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
                     [{{BKey, Type, ?BUCKET}, decrement, 1}]
             end;
 
-        RegisterType when ((RegisterType==antidote_crdt_mvreg) orelse (RegisterType==antidote_crdt_lwwreg))->
+        RegisterType when ((RegisterType==antidote_crdt_register_mv) orelse (RegisterType==antidote_crdt_register_lww))->
             [{{BKey, Type, ?BUCKET}, assign, NewVal}];
 
-        SetType when ((SetType==antidote_crdt_orset) orelse (SetType==antidote_crdt_set_rw))->
+        SetType when ((SetType==antidote_crdt_set_aw) orelse (SetType==antidote_crdt_set_go))->
             Set=
                 case Obj of
                     undefined->
