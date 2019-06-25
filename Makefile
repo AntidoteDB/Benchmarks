@@ -1,6 +1,6 @@
 .PHONY: deps
 
-REBAR := ./rebar3
+REBAR := rebar3
 
 all: deps compile
 	${REBAR} escriptize
