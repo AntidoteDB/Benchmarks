@@ -1,5 +1,6 @@
 #!/usr/bin/env Rscript
 
+
 # Parse the --file= argument out of command line args and
 # determine where base directory is so that we can source
 # our common sub-routines
@@ -118,3 +119,8 @@ print(plot4, vp = vplayout(4,1))
 print(plot5, vp = vplayout(5,1))
 
 dev.off()
+
+txtplot(x = b$summary$elapsed, y = b$summary$successful / b$summary$window, xlab = "Successful requests per second")
+txtplot(b$summary$elapsed, b$summary$failed / b$summary$window, xlab = "Errors per second")
+
+str(b)
