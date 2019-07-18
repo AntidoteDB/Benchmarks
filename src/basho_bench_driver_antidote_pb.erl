@@ -31,9 +31,9 @@
 -record(state, {worker_id,
                 time,
                 type_dict,
-		            last_read,
+                last_read,
                 pb_pid,
-		            set_size,
+                set_size,
                 commit_time,
                 num_reads,
                 num_updates,
@@ -51,7 +51,7 @@
 
 new(Id) ->
 
-    rand_compat:seed(time_compat:timestamp()),
+    rand:seed(exsplus, erlang:timestamp()),
 
     IPs = basho_bench_config:get(antidote_pb_ips),
     PbPorts = basho_bench_config:get(antidote_pb_port),
@@ -101,7 +101,7 @@ run(txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
             %% Perform reads, if this is not a write only transaction.
             {ReadResult, IntKeys}=case NumReads>0 of
                 true->
-                    IntegerKeys=generate_keys(NumReads, KeyGen),
+                    IntegerKeys = generate_keys(NumReads, KeyGen),
                     BoundObjects=[{list_to_binary(integer_to_list(K)), get_key_type(K, TypeDict), ?BUCKET}||K<-IntegerKeys],
                     case create_read_operations(Pid, BoundObjects, TxId, SeqReads) of
                         {ok, RS}->
@@ -118,18 +118,18 @@ run(txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
                     {error, {ID, ERROR}, STATE};
                 _->
                     %% if reads succeeded, perform updates.
-                    UpdateIntKeys=case IntKeys of
-                        no_reads->
+                    UpdateIntKeys = case IntKeys of
+                        no_reads ->
                             %% write only transaction
-                            UpdateIntKeys=generate_keys(NumUpdates, KeyGen);
+                            generate_keys(NumUpdates, KeyGen);
                         _->
                             %%                    The following selects the latest reads for updating.
-                            UpdateIntKeys=lists:sublist(IntKeys, NumReads-NumUpdates+1, NumUpdates)
+                            lists:sublist(IntKeys, NumReads-NumUpdates+1, NumUpdates)
                     end,
                     BObjs=multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
                     case create_update_operations(Pid, BObjs, TxId, SeqWrites) of
                         ok->
-                            case antidotec_pb:commit_transaction(Pid, TxId) of
+                            case antidotec_pb:commit_transaction(Pid, {interactive, TxId}) of
                                 {ok, BCommitTime}->
                                     report_staleness(MS, BCommitTime, StartTime),
                                     CommitTime=
@@ -141,9 +141,7 @@ run(txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
                         E1->
                             {error, {Id, E1}, State}
                     end
-            end;
-        Error->
-            {error, {Id, Error}, State}
+            end
     end;
 
 
@@ -162,8 +160,8 @@ run(update_only_txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
     StartTime = erlang:system_time(micro_seconds), %% For staleness calc
     case antidotec_pb:start_transaction(Pid, term_to_binary(OldCommitTime), [{static, true}]) of
         {ok, {static, {TimeStamp, TxnProperties}}}->
-            UpdateIntKeys=generate_keys(NumUpdates, KeyGen),
-            BObjs=multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
+            UpdateIntKeys = generate_keys(NumUpdates, KeyGen),
+            BObjs = multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
             case create_update_operations(Pid, BObjs, {static, {TimeStamp, TxnProperties}}, SeqWrites) of
                 ok->
                     case antidotec_pb:commit_transaction(Pid, {static, {TimeStamp, TxnProperties}}) of
@@ -172,11 +170,11 @@ run(update_only_txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
                             CommitTime=
                                 binary_to_term(BCommitTime),
                             {ok, State#state{commit_time=CommitTime}};
-                        E->
-                            {error, {Id, E}, State}
+                        Error ->
+                            {error, {Id, Error}, State}
                     end;
-                E1->
-                    {error, {Id, E1}, State}
+                Error ->
+                    {error, {Id, Error}, State}
             end;
         Error->
             {error, {Id, Error}, State}
@@ -208,8 +206,8 @@ run(read_only_txn, KeyGen, _ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
     end,
     case ReadResult of
         %% if reads failed, return immediately.
-        {error, {ID, ERROR}, STATE} ->
-            {error, {ID, ERROR}, STATE};
+        no_reads ->
+            {error, read_failed};
         _ ->
             case antidotec_pb_socket:get_last_commit_time(Pid) of
                 {ok, BCommitTime} ->
@@ -230,31 +228,33 @@ run(read, KeyGen, ValueGen, State) ->
     run(txn, KeyGen, ValueGen, State#state{num_reads=1,num_updates=0}).
 
 
-create_read_operations(Pid, BoundObjects, TxId, IsSeq) ->
+create_read_operations(Pid, BoundObjects, TxInfo, IsSeq) ->
     case IsSeq of
         true->
             Result = lists:map(fun(BoundObj)->
-                {ok, [Value]} = antidotec_pb:read_objects(Pid, [BoundObj], TxId),
+                {ok, [Value]} = antidotec_pb:read_objects(Pid, [BoundObj], TxInfo),
                         Value
                 end,BoundObjects),
             {ok, Result};
         false ->
-                antidotec_pb:read_objects(Pid, BoundObjects, TxId)
+                antidotec_pb:read_objects(Pid, BoundObjects, TxInfo)
     end.
 
-create_update_operations(_Pid, [], _TxId, _IsSeq) ->
+create_update_operations(_Pid, [], _TxInfo, _IsSeq) ->
     ok;
-create_update_operations(Pid, BoundObjects, TxId, IsSeq) ->
+create_update_operations(Pid, BoundObjects, TxInfo, IsSeq) ->
     case IsSeq of
         true ->
             lists:map(fun(BoundObj) ->
-                antidotec_pb:update_objects(Pid, [BoundObj], TxId)
+                antidotec_pb:update_objects(Pid, [BoundObj], TxInfo)
                                end, BoundObjects),
             ok;
         false ->
-            antidotec_pb:update_objects(Pid, BoundObjects, TxId)
+            antidotec_pb:update_objects(Pid, BoundObjects, TxInfo)
     end.
-    get_key_type(Key, Dict) ->
+
+
+get_key_type(Key, Dict) ->
     Keys = dict:fetch_keys(Dict),
     RanNum = Key rem length(Keys),
     lists:nth(RanNum+1, Keys).
@@ -271,7 +271,7 @@ multi_get_random_param_new([Key|Rest], Dict, Value, Objects, SetSize, Acc)->
     undefined ->
       Obj = undefined,
       ObjRest = undefined;
-    [H|T]->
+    [H|T] ->
       Obj = H,
       ObjRest = T
   end,
@@ -280,7 +280,7 @@ multi_get_random_param_new([Key|Rest], Dict, Value, Objects, SetSize, Acc)->
 
 get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
     Params=dict:fetch(Type, Dict),
-    Num=rand_compat:uniform(length(Params)),
+    Num=rand:uniform(length(Params)),
     BKey=list_to_binary(integer_to_list(Key)),
     NewVal=case Value of
         Value when is_integer(Value)->
@@ -309,7 +309,7 @@ get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
                 case Obj of
                     undefined->
                         [];
-                    Obj->
+                     _ ->
                         antidotec_set:value(Obj)
                 end,
             %%Op = lists:nth(Num, Params),
@@ -324,8 +324,8 @@ get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
                     case Set of
                         []->
                             [{{BKey, Type, ?BUCKET}, add_all, [NewVal]}];
-                        Set->
-                            [{{BKey, Type, ?BUCKET}, remove_all, [lists:nth(rand_compat:uniform(length(Set)), Set)]}]
+                        _ ->
+                            [{{BKey, Type, ?BUCKET}, remove_all, [lists:nth(rand:uniform(length(Set)), Set)]}]
                     end;
                 _->
                     [{{BKey, Type, ?BUCKET}, add_all, [NewVal]}]
@@ -334,8 +334,8 @@ get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
 %%
 %%get_random_param(Dict, Type, Value) ->
 %%  Params = dict:fetch(Type, Dict),
-%%  rand_compat:seed(time_compat:timestamp()),
-%%  Num = rand_compat:uniform(length(Params)),
+%%  rand:seed(exsplus, erlang:timestamp()),
+%%  Num = rand:uniform(length(Params)),
 %%  case Type of
 %%    riak_dt_pncounter ->
 %%      {antidotec_counter, lists:nth(Num, Params), 1};
@@ -345,7 +345,7 @@ get_random_param_new(Key, Dict, Type, Value, Obj, SetSize)->
 %%
 %%get_random_param(Dict, Type, Value, Obj, SetSize) ->
 %%  Params = dict:fetch(Type, Dict),
-%%  Num = rand_compat:uniform(length(Params)),
+%%  Num = rand:uniform(length(Params)),
 %%  case Type of
 %%    riak_dt_pncounter ->
 %%      {antidotec_counter, lists:nth(Num, Params), 1};
@@ -415,7 +415,7 @@ unikey(KeyGen, Set) ->
 %%random_string(Len) ->
 %%    Chrs = list_to_tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
 %%    ChrsSize = size(Chrs),
-%%    F = fun(_, R) -> [element(rand_compat:uniform(ChrsSize), Chrs) | R] end,
+%%    F = fun(_, R) -> [element(rand:uniform(ChrsSize), Chrs) | R] end,
 %%    lists:foldl(F, "", lists:seq(1, Len)).
 %%
 %%now_microsec() ->
@@ -433,9 +433,9 @@ unikey(KeyGen, Set) ->
 %%report_staleness(true, CT, CurTime) ->
 %%    SS1 = binary_to_term(CT), %% Binary to dict
 %%    SS = binary_to_list(CT),
-%%    lager:info("CT = ",[CT]),
-%%    lager:info("Bynary to term = ",[SS1]),
-%%    lager:info("Bynary to list = ",[SS]),
+%%    logger:info("CT = ",[CT]),
+%%    logger:info("Bynary to term = ",[SS1]),
+%%    logger:info("Bynary to list = ",[SS]),
 %%
 %%    %% Here it is assumed the stable snapshot has entries for all remote DCs
 %%    %%    SSL = lists:keysort(1, dict:to_list(SS)),

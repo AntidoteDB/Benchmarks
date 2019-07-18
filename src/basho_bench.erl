@@ -55,28 +55,30 @@ main(Args) ->
     register(basho_bench, self()),
     basho_bench_config:set(test_id, BenchName),
 
-    application:load(lager),
-    ConsoleLagerLevel = basho_bench_config:get(log_level, debug),
-    ErrorLog = filename:join([TestDir, "error.log"]),
-    ConsoleLog = filename:join([TestDir, "console.log"]),
-    CrashLog = filename:join([TestDir, "crash.log"]),
-    application:set_env(lager,
-                        handlers,
-                        [{lager_console_backend, ConsoleLagerLevel},
-                         {lager_file_backend, [{file, ErrorLog},   {level, error}, {size, 10485760}, {date, "$D0"}, {count, 5}]},
-                         {lager_file_backend, [{file, ConsoleLog}, {level, debug}, {size, 10485760}, {date, "$D0"}, {count, 5}]}
-                        ]),
-    application:set_env(lager, crash_log, CrashLog),
-    lager:start(),
+    CustomLoggingLevel = basho_bench_config:get(log_level, debug),
+    logger:set_application_level(basho_bench, CustomLoggingLevel),
 
-    %% Make sure this happens after starting lager or failures wont
+    % application:load(lager),
+    % ConsoleLoggingLevel = basho_bench_config:get(log_level, debug),
+    % ErrorLog = filename:join([TestDir, "error.log"]),
+    % ConsoleLog = filename:join([TestDir, "console.log"]),
+    % CrashLog = filename:join([TestDir, "crash.log"]),
+    % application:set_env(lager,
+    %                     handlers,
+    %                     [{lager_console_backend, ConsoleLagerLevel},
+    %                      {lager_file_backend, [{file, ErrorLog},   {level, error}, {size, 10485760}, {date, "$D0"}, {count, 5}]},
+    %                      {lager_file_backend, [{file, ConsoleLog}, {level, debug}, {size, 10485760}, {date, "$D0"}, {count, 5}]}
+    %                     ]),
+    % application:set_env(lager, crash_log, CrashLog),
+
+    %% Make sure this happens after starting the logger or failures wont
     %% show.
     basho_bench_config:load(Configs),
 
-    %% Log level can be overriden by the config files
-    CustomLagerLevel = basho_bench_config:get(log_level),
-    lager:set_loglevel(lager_console_backend, CustomLagerLevel),
-    lager:set_loglevel(lager_file_backend, ConsoleLog, CustomLagerLevel),
+    % %% Log level can be overriden by the config files
+    %CustomLoggingLevel = basho_bench_config:get(log_level, debug),
+    %logger:set_application_level(basho_bench, CustomLoggingLevel),
+%    logger:set_loglevel(lager_file_backend, ConsoleLog, CustomLagerLevel),
 
     %% Init code path
     add_code_paths(basho_bench_config:get(code_paths, [])),

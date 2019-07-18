@@ -87,22 +87,22 @@ run(read, KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_port=
     case antidotec_pb:start_transaction(Pid, term_to_binary(ignore), [{static, true}]) of
 	{ok, TxId} ->
 	    case antidotec_pb:read_objects(Pid, [Bound_object], TxId) of
-		{ok, [_Val]} ->		    
+		{ok, [_Val]} ->
 		    case antidotec_pb:commit_transaction(Pid, TxId) of
 			{ok, BDeps} ->
                 Deps = binary_to_term(BDeps),
-                %lager:info("Deps are ~w", [Deps]),
+                %logger:info("Deps are ~w", [Deps]),
 			    {ok, State#state{deps=merge_deps(Deps, OldDeps)}};
 			_ ->
-			    lager:info("Error read1 on client ~p",[Id]),
+			    logger:info("Error read1 on client ~p",[Id]),
 			    {error, timeout, State}
 		    end;
 		Error ->
-		    lager:info("Error read2 on client ~p : ~p",[Id, Error]),
+		    logger:info("Error read2 on client ~p : ~p",[Id, Error]),
 		    {error, timeout, State}
 	    end;
 	_ ->
-	    lager:info("Error read3 on client ~p",[Id]),
+	    logger:info("Error read3 on client ~p",[Id]),
 	    {error, timeout, State}
     end;
 
@@ -119,18 +119,18 @@ run(read_txn, _KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_
             case antidotec_pb:commit_transaction(Pid, TxId) of
             {ok, BDeps} ->
                 Deps = binary_to_term(BDeps),
-                %lager:info("Deps are ~w", [Deps]),
+                %logger:info("Deps are ~w", [Deps]),
                 {ok, State#state{deps=merge_deps(Deps, OldDeps)}};
             _ ->
-                lager:info("Error read1 on client ~p",[Id]),
+                logger:info("Error read1 on client ~p",[Id]),
                 {error, timeout, State}
             end;
         Error ->
-            lager:info("Error read2 on client ~p : ~p",[Id, Error]),
+            logger:info("Error read2 on client ~p : ~p",[Id, Error]),
             {error, timeout, State}
         end;
     _ ->
-        lager:info("Error read3 on client ~p",[Id]),
+        logger:info("Error read3 on client ~p",[Id]),
         {error, timeout, State}
     end;
 
@@ -139,22 +139,22 @@ run(read_txn, _KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_
     %%     {ok, _Value} ->
     %%         {ok, State};
     %%     {error,timeout} ->
-    %%         lager:info("Timeout on client ~p",[Id]),
+    %%         logger:info("Timeout on client ~p",[Id]),
     %%         antidotec_pb_socket:stop(Pid),
     %%         {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
-    %%         {error, timeout, State#state{pb_pid=NewPid}    };            
+    %%         {error, timeout, State#state{pb_pid=NewPid}    };
     %%     {error, Reason} ->
-    %%         lager:error("Error: ~p",[Reason]),
+    %%         logger:error("Error: ~p",[Reason]),
     %%         {error, Reason, State};
     %%     {badrpc, Reason} ->
     %%         {error, Reason, State}
     %% end;
 
 
-%% @doc Multikey txn 
+%% @doc Multikey txn
 run(readall_write_one, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = Id, num_partitions=NumPart, pb_port=_Port, target_node=_Node, type_dict=TypeDict}) ->
     KeyInt = KeyGen(),
-    KeyList = lists:seq(KeyInt, KeyInt+NumPart-1), 
+    KeyList = lists:seq(KeyInt, KeyInt+NumPart-1),
     KeyTypeList = get_list_key_type(KeyList, TypeDict, []),
     Bucket = <<"bucket">>,
     ObjectList = lists:map( fun({Key, Type}) ->
@@ -166,48 +166,48 @@ run(readall_write_one, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = 
     case antidotec_pb:start_transaction(Pid, term_to_binary(ignore), [{static, true}]) of
 	{ok, TxId} ->
 	    case antidotec_pb:read_objects(Pid, ObjectList, TxId) of
-		{ok, [_Val]} ->		    
+		{ok, [_Val]} ->
 		    case antidotec_pb:commit_transaction(Pid, TxId) of
 			{ok, _} ->
                             %% append one object
                             run(append, KeyGen, ValueGen, State);
 			_ ->
-			    lager:info("Error read1 on client ~p",[Id]),
+			    logger:info("Error read1 on client ~p",[Id]),
 			    {error, timeout, State}
 		    end;
 		Error ->
-		    lager:info("Error read2 on client ~p : ~p",[Id, Error]),
+		    logger:info("Error read2 on client ~p : ~p",[Id, Error]),
 		    {error, timeout, State}
 	    end;
 	_ ->
-	    lager:info("Error read3 on client ~p",[Id]),
+	    logger:info("Error read3 on client ~p",[Id]),
 	    {error, timeout, State}
     end;
-    
+
 
 run(append_multiple, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_port=Port, target_node=Node, type_dict=TypeDict}) ->
     KeyInt = KeyGen(),
-    KeyList = lists:seq(KeyInt, KeyInt+8), 
+    KeyList = lists:seq(KeyInt, KeyInt+8),
     Value = ValueGen(),
-    OpList = lists:foldl(fun(X, Acc) -> 
+    OpList = lists:foldl(fun(X, Acc) ->
                                 Type = get_key_type(X, TypeDict),
                                 {Mod, Op, Param} = get_random_param(TypeDict, Type, Value),
-                                Acc++[Mod:Op(Param, Mod:new(list_to_binary(integer_to_list(X))))] 
+                                Acc++[Mod:Op(Param, Mod:new(list_to_binary(integer_to_list(X))))]
                          end, [], KeyList),
     Response =  antidotec_pb_socket:atomic_store_crdts(OpList, Pid),
     case Response of
         {ok, _} ->
             {ok, State};
         {error,timeout} ->
-            lager:info("Timeout on client ~p",[Id]),
+            logger:info("Timeout on client ~p",[Id]),
             antidotec_pb_socket:stop(Pid),
             {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
-            {error, timeout, State#state{pb_pid=NewPid}    };            
+            {error, timeout, State#state{pb_pid=NewPid}    };
         {error, Reason} ->
-            lager:error("Error: ~p",[Reason]),
+            logger:error("Error: ~p",[Reason]),
             {error, Reason, State};
         error ->
-            lager:info("Error!!!"),
+            logger:info("Error!!!"),
             {error, State};
         {badrpc, Reason} ->
             {error, Reason, State}
@@ -223,9 +223,9 @@ run(append, KeyGen, _ValueGen,
                  target_node=_Node}) ->
     KeyInt = KeyGen(),
     Key = list_to_binary(integer_to_list(KeyInt)),
-    
+
     BObj = {{Key, riak_dt_lwwreg, <<"bucket">>}, assign, random_string(10)},
-    
+
     case antidotec_pb:start_transaction(Pid, term_to_binary(dict:to_list(Deps)), [{static, true}]) of
 	{ok, TxId} ->
 	    case antidotec_pb:update_objects(Pid, [BObj], TxId) of
@@ -233,18 +233,18 @@ run(append, KeyGen, _ValueGen,
 		    case antidotec_pb:commit_transaction(Pid, TxId) of
 			{ok, BTS} ->
                 TS = binary_to_term(BTS),
-                NewDeps = [{Key, TS}], 
-                %lager:info("NewDeps are ~w, updated ~w, put ~w", [NewDeps, Key, Deps]),
+                NewDeps = [{Key, TS}],
+                %logger:info("NewDeps are ~w, updated ~w, put ~w", [NewDeps, Key, Deps]),
 			    {ok, State#state{deps=dict:from_list(NewDeps)}};
 			Error ->
 			    {error, Error, State}
 		    end;
 		Error ->
-		    lager:info("Error append2 on client ~p : ~p",[Id, Error]),
+		    logger:info("Error append2 on client ~p : ~p",[Id, Error]),
                     {error, Error, State}
 	    end;
         Error ->
-	    lager:info("Error append3 on client ~p",[Id]),
+	    logger:info("Error append3 on client ~p",[Id]),
 	    {error, Error, State}
     end;
 
@@ -259,7 +259,7 @@ run(append_txn, _KeyGen, _ValueGen,
                  target_node=_Node}) ->
     IntKeys = k_unique_numes(NumUpdates, 1000),
     BKeys = [list_to_binary(integer_to_list(K)) || K <- IntKeys],
-    BObjs = [{{K, riak_dt_lwwreg, <<"bucket">>}, 
+    BObjs = [{{K, riak_dt_lwwreg, <<"bucket">>},
             assign, random_string(10)} || K <- BKeys ],
 
     case antidotec_pb:start_transaction(Pid, term_to_binary(dict:to_list(Deps)), [{static, true}]) of
@@ -270,17 +270,17 @@ run(append_txn, _KeyGen, _ValueGen,
             {ok, BTS} ->
                 TS = binary_to_term(BTS),
                 NewDeps = [{Key, TS} || Key <- BKeys ],
-                %lager:info("NewDeps are ~w, updated ~p, put ~w", [NewDeps, IntKeys, Deps]),
+                %logger:info("NewDeps are ~w, updated ~p, put ~w", [NewDeps, IntKeys, Deps]),
                 {ok, State#state{deps=dict:from_list(NewDeps)}};
             Error ->
                 {error, Error, State}
             end;
         Error ->
-            lager:info("Error append2 on client ~p : ~p",[Id, Error]),
+            logger:info("Error append2 on client ~p : ~p",[Id, Error]),
                     {error, Error, State}
         end;
         Error ->
-        lager:info("Error append3 on client ~p",[Id]),
+        logger:info("Error append3 on client ~p",[Id]),
         {error, Error, State}
     end;
 
@@ -309,10 +309,10 @@ run(update, KeyGen, ValueGen,
         {ok, _Result} ->
             {ok, State};
         {error,timeout}->
-            lager:info("Timeout on client ~p",[Id]),
+            logger:info("Timeout on client ~p",[Id]),
             antidotec_pb_socket:stop(Pid),
             {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
-            {error, timeout, State#state{pb_pid=NewPid}}; 
+            {error, timeout, State#state{pb_pid=NewPid}};
         {error, Reason} ->
             {error, Reason, State};
         {badrpc, Reason} ->
@@ -333,19 +333,19 @@ get_key_type(Key, Dict) ->
 
 get_random_param(Dict, Type, Value) ->
     Params = dict:fetch(Type, Dict),
-    rand_compat:seed(time_compat:timestamp()),
-    Num = rand_compat:uniform(length(Params)),
+    rand:seed(exsplus, erlang:timestamp()),
+    Num = rand:uniform(length(Params)),
     case Type of
         riak_dt_pncounter ->
            {antidotec_counter,lists:nth(Num, Params), 1};
         riak_dt_orset ->
-            {antidotec_set, lists:nth(Num, Params), Value}                     
+            {antidotec_set, lists:nth(Num, Params), Value}
     end.
 
 get_random_param(Dict, Type, Value, Obj, SetSize) ->
     Params = dict:fetch(Type, Dict),
-    rand_compat:seed(time_compat:timestamp()),
-    Num = rand_compat:uniform(length(Params)),
+    rand:seed(exsplus, erlang:timestamp()),
+    Num = rand:uniform(length(Params)),
     case Type of
         riak_dt_pncounter ->
            {antidotec_counter,lists:nth(Num, Params), 1};
@@ -358,20 +358,20 @@ get_random_param(Dict, Type, Value, Obj, SetSize) ->
                 false ->
                     remove
                 end,
-            case NewOp of 
+            case NewOp of
                 remove ->
-                    case sets:to_list(Set) of 
-                        [] -> {antidotec_set, add, Value};                     
+                    case sets:to_list(Set) of
+                        [] -> {antidotec_set, add, Value};
                         [H|_T] -> {antidotec_set, remove, H}
                     end;
                 _ ->
                     {antidotec_set, NewOp, Value}
-            end                      
+            end
     end.
 
 merge_deps(NewDeps, OldDeps) ->
     lists:foldl(fun({Key, TS}, Dict) ->
-                case TS of 
+                case TS of
                     {ignore, 0} ->
                         Dict;
                     _ ->
@@ -394,7 +394,7 @@ k_unique_numes(Num, Range) ->
     sets:to_list(S).
 
 uninum(Range, Set) ->
-    R = rand_compat:uniform(Range),
+    R = rand:uniform(Range),
     case sets:is_element(R, Set) of
         true ->
             uninum(Range, Set);
@@ -405,6 +405,6 @@ uninum(Range, Set) ->
 random_string(Len) ->
     Chrs = list_to_tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
     ChrsSize = size(Chrs),
-    F = fun(_, R) -> [element(rand_compat:uniform(ChrsSize), Chrs) | R] end,
+    F = fun(_, R) -> [element(rand:uniform(ChrsSize), Chrs) | R] end,
     lists:foldl(F, "", lists:seq(1, Len)).
 
