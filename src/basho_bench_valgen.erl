@@ -25,6 +25,8 @@
          dimension/2]).
 
 -include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 
 %% ====================================================================
 %% API
@@ -82,14 +84,14 @@ init_source(Id) ->
     init_source(Id, basho_bench_config:get(?VAL_GEN_BLOB_CFG, undefined)).
 
 init_source(Id, undefined) ->
-    if Id == 1 -> ?DEBUG("random source\n", []);
+    if Id == 1 -> ?LOG_DEBUG("random source\n", []);
        true    -> ok
     end,
     SourceSz = basho_bench_config:get(?VAL_GEN_SRC_SIZE, 1048576),
     {?VAL_GEN_SRC_SIZE, SourceSz, crypto:strong_rand_bytes(SourceSz)};
 init_source(Id, Path) ->
     {Path, {ok, Bin}} = {Path, file:read_file(Path)},
-    if Id == 1 -> ?DEBUG("path source ~p ~p\n", [size(Bin), Path]);
+    if Id == 1 -> ?LOG_DEBUG("path source ~p ~p\n", [size(Bin), Path]);
        true    -> ok
     end,
     {?VAL_GEN_BLOB_CFG, size(Bin), Bin}.
@@ -101,7 +103,7 @@ data_block({SourceCfg, SourceSz, Source}, BlockSize) ->
             <<_:Offset/bytes, Slice:BlockSize/bytes, _Rest/binary>> = Source,
             Slice;
         false ->
-            ?WARN("~p is too small ~p < ~p\n",
+            ?LOG_WARNING("~p is too small ~p < ~p\n",
                   [SourceCfg, SourceSz, BlockSize]),
             Source
     end.

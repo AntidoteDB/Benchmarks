@@ -25,6 +25,8 @@
          run/4]).
 
 -include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 -define(BUCKET, <<"antidote_bench_bucket">>).
 
 -define(TIMEOUT, 20000).
@@ -64,9 +66,9 @@ new(Id) ->
     SequentialWrites = basho_bench_config:get(sequential_writes),
     %% Choose the node using our ID as a modulus
     TargetNode = lists:nth((Id rem length(IPs)+1), IPs),
-    ?INFO("Using target node ~p for worker ~p\n", [TargetNode, Id]),
+    ?LOG_INFO("Using target node ~p for worker ~p", [TargetNode, Id]),
     TargetPort = lists:nth((Id rem length(IPs)+1), PbPorts),
-    ?INFO("Using target port ~p for worker ~p\n", [TargetPort, Id]),
+    ?LOG_INFO("Using target port ~p for worker ~p", [TargetPort, Id]),
     {ok, Pid} = antidotec_pb_socket:start_link(TargetNode, TargetPort),
     TypeDict = dict:from_list(Types),
     {ok, #state{time = {1, 1, 1}, worker_id = Id,
@@ -126,7 +128,7 @@ run(txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
                             %%                    The following selects the latest reads for updating.
                             lists:sublist(IntKeys, NumReads-NumUpdates+1, NumUpdates)
                     end,
-                    BObjs=multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
+                    BObjs = multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
                     case create_update_operations(Pid, BObjs, TxId, SeqWrites) of
                         ok->
                             case antidotec_pb:commit_transaction(Pid, {interactive, TxId}) of
@@ -433,9 +435,9 @@ unikey(KeyGen, Set) ->
 %%report_staleness(true, CT, CurTime) ->
 %%    SS1 = binary_to_term(CT), %% Binary to dict
 %%    SS = binary_to_list(CT),
-%%    logger:info("CT = ",[CT]),
-%%    logger:info("Bynary to term = ",[SS1]),
-%%    logger:info("Bynary to list = ",[SS]),
+%%    ?LOG_INFO("CT = ",[CT]),
+%%    ?LOG_INFO("Bynary to term = ",[SS1]),
+%%    ?LOG_INFO("Bynary to list = ",[SS]),
 %%
 %%    %% Here it is assumed the stable snapshot has entries for all remote DCs
 %%    %%    SSL = lists:keysort(1, dict:to_list(SS)),

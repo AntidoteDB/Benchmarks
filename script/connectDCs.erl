@@ -1,4 +1,5 @@
 -module(connectDCs).
+-include_lib("kernel/include/logger.hrl").
 
 -export([listenAndConnect/1, connect/7
 	]).
@@ -117,7 +118,7 @@ wait_ready_nodes([Node|Rest], [Cookie|RestCookie], IsPubSub, IsPartial, IsEC) ->
 	    end,
 	    wait_ready_nodes(Rest,RestCookie,IsPubSub, IsPartial, IsEC);
 	false ->
-	    logger:info("Node ~w not ready, rety in 5 sec",[Node]),
+	    ?LOG_INFO("Node ~w not ready, rety in 5 sec",[Node]),
 	    timer:sleep(5000),
 	    wait_ready_nodes([Node|Rest],[Cookie|RestCookie],IsPubSub,IsPartial, IsEC)
     end.

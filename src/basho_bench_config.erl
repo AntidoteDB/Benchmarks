@@ -27,6 +27,7 @@
          get/1, get/2]).
 
 -include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %% ===================================================================
 %% Public API
@@ -88,7 +89,7 @@ load_config([{Key, Value} | Rest]) ->
     ?MODULE:set(Key, Value),
     load_config(Rest);
 load_config([ Other | Rest]) ->
-    ?WARN("Ignoring non-tuple config value: ~p\n", [Other]),
+    ?LOG_WARNING("Ignoring non-tuple config value: ~p\n", [Other]),
     load_config(Rest).
 
 normalize_ip_entry({IP, Ports}, Normalized, _) when is_list(Ports) ->

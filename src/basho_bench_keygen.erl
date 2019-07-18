@@ -21,12 +21,14 @@
 %% -------------------------------------------------------------------
 -module(basho_bench_keygen).
 
+-include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
+
+
 -export([new/2,
          dimension/1,
          sequential_int_generator/4]).
 -export([reset_sequential_int_state/0]).        % Internal driver use only.
-
--include("basho_bench.hrl").
 
 %% Use a fixed shape for Pareto that will yield the desired 80/20
 %% ratio of generated values.
@@ -91,7 +93,7 @@ new({biased_partial, MaxKey, ReplicationFactor, PercentageExternal}, _Id) ->
     end;
 
 new({int_to_bin, InputGen}, Id) ->
-    ?WARN("The int_to_bin key generator wrapper is deprecated, please use the "
+    ?LOG_WARNING("The int_to_bin key generator wrapper is deprecated, please use the "
           "int_to_bin_bigendian or int_to_bin_littleendian wrapper instead\n",
           []),
     Gen = new(InputGen, Id),
@@ -136,7 +138,7 @@ new({partitioned_sequential_int, StartKey, NumKeys}, Id)
     Ref = make_ref(),
     DisableProgress =
         basho_bench_config:get(disable_sequential_int_progress_report, false),
-    ?DEBUG("ID ~p generating range ~p to ~p\n", [Id, MinValue, MaxValue]),
+    ?LOG_DEBUG("ID ~p generating range ~p to ~p\n", [Id, MinValue, MaxValue]),
     fun() -> sequential_int_generator(Ref, MaxValue - MinValue, Id, DisableProgress) + MinValue end;
 new({uniform_int, MaxKey}, _Id)
   when is_integer(MaxKey), MaxKey > 0 ->
@@ -193,7 +195,7 @@ dimension({truncated_pareto_int, MaxKey}) ->
 dimension(Bin) when is_binary(Bin) ->
     undefined;
 dimension(Other) ->
-    ?INFO("No dimension available for key generator: ~p\n", [Other]),
+    ?LOG_INFO("No dimension available for key generator: ~p\n", [Other]),
     undefined.
 
 
@@ -242,7 +244,7 @@ sequential_int_generator(Ref, MaxValue, Id, DisableProgress) ->
            case (not DisableProgress) andalso Value rem 5000 == 0 of
                true ->
                    Me = self(),
-                   spawn(fun() -> ?DEBUG("sequential_int_gen: ~p: ~p (~w%)\n", [Me, Value, trunc(100 * (Value / MaxValue))]) end);
+                   spawn(fun() -> ?LOG_DEBUG("sequential_int_gen: ~p: ~p (~w%)\n", [Me, Value, trunc(100 * (Value / MaxValue))]) end);
                false ->
                    ok
            end,
@@ -277,17 +279,17 @@ seq_gen_read_resume_value(Id, MaxValue) ->
                 Value = binary_to_term(Bin),
             case Value > MaxValue of
                true ->
-                  ?WARN("Id ~p resume value ~p exceeds maximum value ~p. Restarting from 0",[Id, Value, MaxValue]),
+                  ?LOG_WARNING("Id ~p resume value ~p exceeds maximum value ~p. Restarting from 0",[Id, Value, MaxValue]),
                   0;
                false ->
-                  ?DEBUG("Id ~p resuming from value ~p\n", [Id, Value]),
+                  ?LOG_DEBUG("Id ~p resuming from value ~p\n", [Id, Value]),
                   Value
             end
             catch
                 error:{badmatch, _} ->
                     0;
                 X:Y ->
-                    ?DEBUG("Error reading resume value for Id ~p ~p: ~p ~p\n",
+                    ?LOG_DEBUG("Error reading resume value for Id ~p ~p: ~p ~p\n",
                            [Id, Path ++ "/" ++ integer_to_list(Id), X, Y]),
                     0
             end
@@ -307,7 +309,7 @@ seq_gen_state_dir(Id) ->
                     put(seq_dir_test_res, true),
                     Dir;
                 MkDirErr ->
-                    ?WARN("Could not ensure ~p -> ~p was a writable dir: ~p", [Key, Dir, MkDirErr]),
+                    ?LOG_WARNING("Could not ensure ~p -> ~p was a writable dir: ~p", [Key, Dir, MkDirErr]),
                     put(seq_dir_test_res, false),
                     put(you_have_been_warned, true),
                     ""
@@ -316,7 +318,7 @@ seq_gen_state_dir(Id) ->
             case Else /= "" andalso
                  get(you_have_been_warned) == undefined andalso Id == 1 of
                 true ->
-                    ?WARN("Config value ~p -> ~p is not an absolute "
+                    ?LOG_WARNING("Config value ~p -> ~p is not an absolute "
                           "path, ignoring!\n", [Key, Else]),
                     put(you_have_been_warned, true);
                 false ->

@@ -25,6 +25,7 @@
          run/4]).
 
 -include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -define(TIMEOUT, 20000).
 -record(state, {worker_id,
@@ -47,7 +48,7 @@ new(Id) ->
     %% Make sure bitcask is available
     case code:which(antidote) of
         non_existing ->
-            ?FAIL_MSG("~s requires antidote to be available on code path.\n",
+            ?LOG_ALERT("~s requires Antidote to be available on code path.",
                       [?MODULE]);
         _ ->
             ok
@@ -65,7 +66,7 @@ new(Id) ->
     TargetNode = lists:nth((Id rem length(IPs)+1), IPs),
     %%TargetPort = lists:nth((Id rem length(PbPorts)+1), PbPorts),
     TargetPort = PbPorts,
-    ?INFO("Using target node ~p for worker ~p\n", [TargetNode, Id]),
+    ?LOG_INFO("Using target node ~p for worker ~p", [TargetNode, Id]),
 
     {ok, Pid} = antidotec_pb_socket:start_link(TargetNode, TargetPort),
     TypeDict = dict:from_list(Types),
@@ -91,18 +92,17 @@ run(read, KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_port=
 		    case antidotec_pb:commit_transaction(Pid, TxId) of
 			{ok, BDeps} ->
                 Deps = binary_to_term(BDeps),
-                %logger:info("Deps are ~w", [Deps]),
 			    {ok, State#state{deps=merge_deps(Deps, OldDeps)}};
 			_ ->
-			    logger:info("Error read1 on client ~p",[Id]),
+			    ?LOG_ERROR("Error read1 on client ~p",[Id]),
 			    {error, timeout, State}
 		    end;
 		Error ->
-		    logger:info("Error read2 on client ~p : ~p",[Id, Error]),
+		    ?LOG_ERROR("Error read2 on client ~p : ~p",[Id, Error]),
 		    {error, timeout, State}
 	    end;
 	_ ->
-	    logger:info("Error read3 on client ~p",[Id]),
+	    ?LOG_ERROR("Error read3 on client ~p",[Id]),
 	    {error, timeout, State}
     end;
 
@@ -119,18 +119,18 @@ run(read_txn, _KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_
             case antidotec_pb:commit_transaction(Pid, TxId) of
             {ok, BDeps} ->
                 Deps = binary_to_term(BDeps),
-                %logger:info("Deps are ~w", [Deps]),
+                %?LOG_INFO("Deps are ~w", [Deps]),
                 {ok, State#state{deps=merge_deps(Deps, OldDeps)}};
             _ ->
-                logger:info("Error read1 on client ~p",[Id]),
+                ?LOG_ERROR("Error read1 on client ~p",[Id]),
                 {error, timeout, State}
             end;
         Error ->
-            logger:info("Error read2 on client ~p : ~p",[Id, Error]),
+            ?LOG_ERROR("Error read2 on client ~p : ~p",[Id, Error]),
             {error, timeout, State}
         end;
     _ ->
-        logger:info("Error read3 on client ~p",[Id]),
+        ?LOG_ERROR("Error read3 on client ~p",[Id]),
         {error, timeout, State}
     end;
 
@@ -139,12 +139,12 @@ run(read_txn, _KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_
     %%     {ok, _Value} ->
     %%         {ok, State};
     %%     {error,timeout} ->
-    %%         logger:info("Timeout on client ~p",[Id]),
+    %%         ?LOG_INFO("Timeout on client ~p",[Id]),
     %%         antidotec_pb_socket:stop(Pid),
     %%         {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
     %%         {error, timeout, State#state{pb_pid=NewPid}    };
     %%     {error, Reason} ->
-    %%         logger:error("Error: ~p",[Reason]),
+    %%         ?LOG_ERROR("Error: ~p",[Reason]),
     %%         {error, Reason, State};
     %%     {badrpc, Reason} ->
     %%         {error, Reason, State}
@@ -172,15 +172,15 @@ run(readall_write_one, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = 
                             %% append one object
                             run(append, KeyGen, ValueGen, State);
 			_ ->
-			    logger:info("Error read1 on client ~p",[Id]),
+			    ?LOG_ERROR("Error read1 on client ~p",[Id]),
 			    {error, timeout, State}
 		    end;
 		Error ->
-		    logger:info("Error read2 on client ~p : ~p",[Id, Error]),
+		    ?LOG_ERROR("Error read2 on client ~p : ~p",[Id, Error]),
 		    {error, timeout, State}
 	    end;
 	_ ->
-	    logger:info("Error read3 on client ~p",[Id]),
+	    ?LOG_ERROR("Error read3 on client ~p",[Id]),
 	    {error, timeout, State}
     end;
 
@@ -199,15 +199,15 @@ run(append_multiple, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = Id
         {ok, _} ->
             {ok, State};
         {error,timeout} ->
-            logger:info("Timeout on client ~p",[Id]),
+            ?LOG_ERROR("Timeout on client ~p",[Id]),
             antidotec_pb_socket:stop(Pid),
             {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
             {error, timeout, State#state{pb_pid=NewPid}    };
         {error, Reason} ->
-            logger:error("Error: ~p",[Reason]),
+            ?LOG_ERROR("Error: ~p",[Reason]),
             {error, Reason, State};
         error ->
-            logger:info("Error!!!"),
+            ?LOG_ERROR("Error!!!"),
             {error, State};
         {badrpc, Reason} ->
             {error, Reason, State}
@@ -234,17 +234,17 @@ run(append, KeyGen, _ValueGen,
 			{ok, BTS} ->
                 TS = binary_to_term(BTS),
                 NewDeps = [{Key, TS}],
-                %logger:info("NewDeps are ~w, updated ~w, put ~w", [NewDeps, Key, Deps]),
+                %?LOG_INFO("NewDeps are ~w, updated ~w, put ~w", [NewDeps, Key, Deps]),
 			    {ok, State#state{deps=dict:from_list(NewDeps)}};
 			Error ->
 			    {error, Error, State}
 		    end;
 		Error ->
-		    logger:info("Error append2 on client ~p : ~p",[Id, Error]),
+		    ?LOG_ERROR("Error append2 on client ~p : ~p",[Id, Error]),
                     {error, Error, State}
 	    end;
         Error ->
-	    logger:info("Error append3 on client ~p",[Id]),
+	    ?LOG_ERROR("Error append3 on client ~p",[Id]),
 	    {error, Error, State}
     end;
 
@@ -270,17 +270,17 @@ run(append_txn, _KeyGen, _ValueGen,
             {ok, BTS} ->
                 TS = binary_to_term(BTS),
                 NewDeps = [{Key, TS} || Key <- BKeys ],
-                %logger:info("NewDeps are ~w, updated ~p, put ~w", [NewDeps, IntKeys, Deps]),
+                %?LOG_INFO("NewDeps are ~w, updated ~p, put ~w", [NewDeps, IntKeys, Deps]),
                 {ok, State#state{deps=dict:from_list(NewDeps)}};
             Error ->
                 {error, Error, State}
             end;
         Error ->
-            logger:info("Error append2 on client ~p : ~p",[Id, Error]),
+            ?LOG_ERROR("Error append2 on client ~p : ~p",[Id, Error]),
                     {error, Error, State}
         end;
         Error ->
-        logger:info("Error append3 on client ~p",[Id]),
+        ?LOG_ERROR("Error append3 on client ~p",[Id]),
         {error, Error, State}
     end;
 
@@ -309,7 +309,7 @@ run(update, KeyGen, ValueGen,
         {ok, _Result} ->
             {ok, State};
         {error,timeout}->
-            logger:info("Timeout on client ~p",[Id]),
+            ?LOG_ERROR("Timeout on client ~p",[Id]),
             antidotec_pb_socket:stop(Pid),
             {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
             {error, timeout, State#state{pb_pid=NewPid}};

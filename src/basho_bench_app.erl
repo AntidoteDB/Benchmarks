@@ -20,6 +20,7 @@
 %%
 %% -------------------------------------------------------------------
 -module(basho_bench_app).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(application).
 
@@ -49,7 +50,6 @@ start() ->
           application:start(basho_bench);
        NotInc when NotInc == {ok, standalone} orelse NotInc == undefined ->
           application:load(sasl),
-          application:set_env(sasl, sasl_error_logger, {file, "log.sasl.txt"}),
           %% Make sure crypto is available
           ensure_started([sasl, crypto, bear]),
 
