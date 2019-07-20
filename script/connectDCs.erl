@@ -1,8 +1,7 @@
 -module(connectDCs).
 -include_lib("kernel/include/logger.hrl").
 
--export([listenAndConnect/1, connect/7
-	]).
+-export([listenAndConnect/1, connect/7]).
 
 -define(LISTEN_PORT, 8311).
 
@@ -402,7 +401,7 @@ get_external_read_dcs(OtherDCs) ->
 			Acc ++ [hd(DcPorts)]
 		end,[],OtherDCs).
 
-% Should return a list where each value is a sigle element tuple with the Dc number
+% Should return a list where each value is a single element tuple with the DC number
 create_biased_key_function(ReplicationFactor,NumDcs) ->
     fun(Key) ->
 
