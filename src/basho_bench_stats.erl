@@ -16,10 +16,12 @@
 %% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 %% KIND, either express or implied.  See the License for the
 %% specific language governing permissions and limitations
-%% under the License.    
+%% under the License.
 %%
 %% -------------------------------------------------------------------
 -module(basho_bench_stats).
+-include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 
@@ -33,7 +35,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--include("basho_bench.hrl").
+
 
 -record(state, { ops,
                  start_time = os:timestamp(),
@@ -51,7 +53,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 exponential(Lambda) ->
-    -math:log(rand_compat:uniform()) / Lambda.
+    -math:log(rand:uniform()) / Lambda.
 
 run() ->
     gen_server:call(?MODULE, run).
@@ -271,8 +273,8 @@ process_stats(Now, State) ->
         true ->
             ErrCounts = ets:tab2list(basho_bench_errors),
             true = ets:delete_all_objects(basho_bench_errors),
-            ?INFO("Errors:~p\n", [lists:sort(ErrCounts)]),
-            [ets_increment(basho_bench_total_errors, Err, Count) || 
+            ?LOG_NOTICE("Reported errors:~p", [lists:sort(ErrCounts)]),
+            [ets_increment(basho_bench_total_errors, Err, Count) ||
                               {Err, Count} <- ErrCounts],
             ok;
         false ->
@@ -303,7 +305,7 @@ report_latency(Elapsed, Window, Op) ->
                                   proplists:get_value(max, Stats),
                                   Errors]);
         false ->
-            ?WARN("No data for op: ~p\n", [Op]),
+            ?LOG_WARNING("No data for op: ~p\n", [Op]),
             Line = io_lib:format("~w, ~w, 0, 0, 0, 0, 0, 0, 0, 0, ~w\n",
                                  [Elapsed,
                                   Window,
@@ -312,25 +314,15 @@ report_latency(Elapsed, Window, Op) ->
     ok = file:write(erlang:get({csv_file, Op}), Line),
     {Units, Errors}.
 
-report_total_errors(State) ->                          
+report_total_errors(State) ->
     case ets:tab2list(basho_bench_total_errors) of
         [] ->
-            ?INFO("No Errors.\n", []);
+            ?LOG_INFO("No Errors", []);
         UnsortedErrCounts ->
             ErrCounts = lists:sort(UnsortedErrCounts),
-            ?INFO("Total Errors:\n", []),
-            F = fun({Key, Count}) ->
-                        case lists:member(Key, State#state.ops) of
-                            true ->
-                                ok; % per op total
-                            false ->
-                                ?INFO("  ~p: ~p\n", [Key, Count]),
-                                file:write(State#state.errors_file, 
-                                           io_lib:format("\"~w\",\"~w\"\n",
-                                                         [Key, Count]))
-                        end
-                end,
-            lists:foreach(F, ErrCounts)
+            F = fun({Key, _Count}) -> lists:member(Key, State#state.ops) end,
+            ErrorSummary = lists:filter(F, ErrCounts),
+            ?LOG_NOTICE("Total Errors: ~p", [ErrorSummary])
     end.
 
 consume_report_msgs() ->

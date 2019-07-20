@@ -20,8 +20,11 @@
 %%
 %% -------------------------------------------------------------------
 -module(basho_bench_measurement).
+-include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
+
 
 %% API
 -export([start_link/0,
@@ -36,8 +39,6 @@
                  driver_state,
                  timer_refs = []
                }).
-
--include("basho_bench.hrl").
 
 %% ====================================================================
 %% API
@@ -96,13 +97,13 @@ handle_call({take_measurement, Measurement}, _From, State) ->
             %% Give the driver a chance to cleanup
             (catch Driver:terminate({'EXIT', Reason}, DriverState)),
 
-            ?DEBUG("Driver ~p crashed: ~p\n", [Driver, Reason]),
+            ?LOG_DEBUG("Driver ~p crashed: ~p\n", [Driver, Reason]),
             {stop, crash, State};
 
         {stop, Reason} ->
             %% Driver (or something within it) has requested that this measurement
             %% terminate cleanly.
-            ?INFO("Driver ~p (~p) has requested stop: ~p\n", [Driver, self(), Reason]),
+            ?LOG_INFO("Driver ~p (~p) has requested stop: ~p\n", [Driver, self(), Reason]),
 
             %% Give the driver a chance to cleanup
             (catch Driver:terminate(normal, DriverState)),

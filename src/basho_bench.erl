@@ -21,9 +21,10 @@
 %% -------------------------------------------------------------------
 -module(basho_bench).
 
--export([main/1, md5/1]).
-
 -include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
+
+-export([main/1, md5/1]).
 
 %% ====================================================================
 %% API
@@ -55,28 +56,34 @@ main(Args) ->
     register(basho_bench, self()),
     basho_bench_config:set(test_id, BenchName),
 
-    application:load(lager),
-    ConsoleLagerLevel = basho_bench_config:get(log_level, debug),
-    ErrorLog = filename:join([TestDir, "error.log"]),
-    ConsoleLog = filename:join([TestDir, "console.log"]),
-    CrashLog = filename:join([TestDir, "crash.log"]),
-    application:set_env(lager,
-                        handlers,
-                        [{lager_console_backend, ConsoleLagerLevel},
-                         {lager_file_backend, [{file, ErrorLog},   {level, error}, {size, 10485760}, {date, "$D0"}, {count, 5}]},
-                         {lager_file_backend, [{file, ConsoleLog}, {level, debug}, {size, 10485760}, {date, "$D0"}, {count, 5}]}
-                        ]),
-    application:set_env(lager, crash_log, CrashLog),
-    lager:start(),
-
-    %% Make sure this happens after starting lager or failures wont
-    %% show.
     basho_bench_config:load(Configs),
 
-    %% Log level can be overriden by the config files
-    CustomLagerLevel = basho_bench_config:get(log_level),
-    lager:set_loglevel(lager_console_backend, CustomLagerLevel),
-    lager:set_loglevel(lager_file_backend, ConsoleLog, CustomLagerLevel),
+    % Configure log settings
+    FileLoggingLevel = basho_bench_config:get(file_loglevel, all),
+    ConsoleLoggingLevel = basho_bench_config:get(console_loglevel, notice),
+
+    MinLogLevel = case logger:compare_levels(FileLoggingLevel, ConsoleLoggingLevel) of
+            gt -> ConsoleLoggingLevel;
+            lt -> FileLoggingLevel;
+            eq -> FileLoggingLevel
+        end,
+    ?LOG_INFO("MinLogLevel: ~p", [MinLogLevel]),
+    logger:set_primary_config(level, MinLogLevel),
+
+    LogFileName = basho_bench_config:get(logfile, "basho_bench.log"),
+    LogFilePath = filename:join([TestDir, LogFileName]),
+
+    logger:update_handler_config(default, level, ConsoleLoggingLevel),
+
+    logger:add_handlers([
+         %% Disk logger for errors
+        {handler, disk_log, logger_disk_log_h,
+            #{config => #{
+                file => LogFilePath,
+                type => wrap,
+                max_no_files => 10,
+                max_no_bytes => 52428800},
+             level => FileLoggingLevel}}]),
 
     %% Init code path
     add_code_paths(basho_bench_config:get(code_paths, [])),
@@ -122,7 +129,7 @@ print_usage() ->
 check_args({ok, {Opts, Args}}) ->
     {Opts, Args};
 check_args({error, {Reason, _Data}}) ->
-    ?STD_ERR("Failed to parse arguments: ~p~n", [Reason]),
+    ?LOG_ALERT("Failed to parse arguments: ~p~n", [Reason]),
     print_usage(),
     halt(1).
 
@@ -160,7 +167,7 @@ maybe_join(Opts) ->
 bench_name(Opts) ->
     case proplists:get_value(bench_name, Opts, id()) of
         "current" ->
-            ?STD_ERR("Cannot use name 'current'~n", []),
+            ?LOG_ALERT("Cannot use name 'current'"),
             halt(1);
         Name ->
             Name
@@ -181,24 +188,24 @@ wait_for_stop(Mref, infinity) ->
     receive
         {'DOWN', Mref, _, _, Info} ->
             run_post_hook(),
-            ?CONSOLE("Test stopped: ~p\n", [Info])
+            ?LOG_INFO("Test stopped: ~p", [Info])
     end;
 wait_for_stop(Mref, DurationMins) ->
     Duration = timer:minutes(DurationMins) + timer:seconds(1),
     receive
         {'DOWN', Mref, _, _, Info} ->
             run_post_hook(),
-            ?CONSOLE("Test stopped: ~p\n", [Info]);
+            ?LOG_INFO("Test stopped: ~p", [Info]);
         {shutdown, Reason, Exit} ->
             run_post_hook(),
             basho_bench_app:stop(),
-            ?CONSOLE("Test shutdown: ~s~n", [Reason]),
+            ?LOG_ALERT("Test shutdown: ~s~n", [Reason]),
             halt(Exit)
 
     after Duration ->
             run_post_hook(),
             basho_bench_app:stop(),
-            ?CONSOLE("Test completed after ~p mins.\n", [DurationMins])
+            ?LOG_INFO("Test completed after ~p mins.", [DurationMins])
     end.
 
 %%
@@ -222,7 +229,7 @@ add_code_paths([Path | Rest]) ->
         true ->
             add_code_paths(Rest);
         Error ->
-            ?FAIL_MSG("Failed to add ~p to code_path: ~p\n", [CodePath, Error])
+            ?LOG_ERROR("Failed to add ~p to code_path: ~p", [CodePath, Error])
     end.
 
 
@@ -247,7 +254,7 @@ log_dimensions() ->
         Keyspace ->
             Valspace = basho_bench_valgen:dimension(basho_bench_config:get(value_generator), Keyspace),
             {Size, Desc} = user_friendly_bytes(Valspace),
-            ?INFO("Est. data size: ~.2f ~s\n", [Size, Desc])
+            ?LOG_INFO("Estimated data size: ~.2f ~s", [Size, Desc])
     end.
 
 
@@ -256,10 +263,10 @@ load_source_files(Dir) ->
                         case compile:file(F, [report, binary]) of
                             {ok, Mod, Bin} ->
                                 {module, Mod} = code:load_binary(Mod, F, Bin),
-                                ?INFO("Loaded ~p (~s)\n", [Mod, F]),
+                                ?LOG_INFO("Loaded ~p (~s)", [Mod, F]),
                                 ok;
                             Error ->
-                                io:format("Failed to compile ~s: ~p\n", [F, Error])
+                                ?LOG_ALERT("Failed to compile ~s: ~p", [F, Error])
                         end
                 end,
     filelib:fold_files(Dir, ".*.erl", false, CompileFn, ok).

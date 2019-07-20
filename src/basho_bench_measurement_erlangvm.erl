@@ -21,10 +21,11 @@
 %% -------------------------------------------------------------------
 -module(basho_bench_measurement_erlangvm).
 
+-include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 -export([new/0,
          run/2]).
-
--include("basho_bench.hrl").
 
 -record(state, {
           nodes
@@ -39,7 +40,7 @@ new() ->
     MyNode  = basho_bench_config:get(mynode, [basho_bench, longnames]),
     case net_kernel:start(MyNode) of
         {ok, _} ->
-            ?INFO("Net kernel started as ~p\n", [node()]);
+            ?LOG_INFO("Net kernel started as ~p\n", [node()]);
         {error, {already_started, _}} ->
             ok;
         {error, Reason} ->

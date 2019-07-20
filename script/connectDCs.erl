@@ -1,11 +1,11 @@
 -module(connectDCs).
+-include_lib("kernel/include/logger.hrl").
 
--export([listenAndConnect/1, connect/7
-	]).
+-export([listenAndConnect/1, connect/7]).
 
 -define(LISTEN_PORT, 8311).
 
-listenAndConnect(StringNodes) -> 
+listenAndConnect(StringNodes) ->
     Temp = [list_to_atom(StringNode) || StringNode <- StringNodes],
     Cookie = hd(Temp),
     DCPerRing = list_to_integer(atom_to_list(hd(tl(Temp)))),
@@ -17,7 +17,7 @@ listenAndConnect(StringNodes) ->
     io:format("Nodes ~w ~n", [Nodes]),
     io:format("Cookies ~w ~n", [Cookies]),
     io:format("Branch from erl ~w ~n", [Branch]),
-    
+
     true = erlang:set_cookie(node(), Cookie),
     NumDCs = length(Nodes) div DCPerRing,
     io:format("NumDCs ~w ~n", [NumDCs]),
@@ -49,7 +49,7 @@ listenAndConnect(StringNodes) ->
 			rpc:call(ANode, inter_dc_manager, start_bg_processes, [stable]),
 			Rest
 		  end, HeadCookies, HeadNodes),
-    HeadNodesIp = keepnth(Nodes, DCPerRing, 0, []), 
+    HeadNodesIp = keepnth(Nodes, DCPerRing, 0, []),
     case IsPartial of
 	true ->
 	    ReplicationFactor = case re:run(atom_to_list(BenchmarkFile),"_rep") of
@@ -93,7 +93,7 @@ wait_ready_nodes([Node|Rest], [Cookie|RestCookie], IsPubSub, IsPartial, IsEC) ->
     true = erlang:set_cookie(node(), Cookie),
     case check_ready(Node,IsEC) of
 	true ->
-	    case IsPubSub of 
+	    case IsPubSub of
 		true ->
 		    wait_until_registered(Node, inter_dc_pub),
 		    wait_until_registered(Node, inter_dc_log_reader_response),
@@ -117,7 +117,7 @@ wait_ready_nodes([Node|Rest], [Cookie|RestCookie], IsPubSub, IsPartial, IsEC) ->
 	    end,
 	    wait_ready_nodes(Rest,RestCookie,IsPubSub, IsPartial, IsEC);
 	false ->
-	    lager:info("Node ~w not ready, rety in 5 sec",[Node]),
+	    ?LOG_INFO("Node ~w not ready, rety in 5 sec",[Node]),
 	    timer:sleep(5000),
 	    wait_ready_nodes([Node|Rest],[Cookie|RestCookie],IsPubSub,IsPartial, IsEC)
     end.
@@ -169,7 +169,7 @@ check_ready(Node,false) ->
 addCookie([], _, Adder) ->
     Adder;
 addCookie([Node|RestNodes], Cookie, Adder) ->
-    NodeAddr = case is_atom(Node) of 
+    NodeAddr = case is_atom(Node) of
                 true ->
                     list_to_atom(atom_to_list(Cookie) ++ "@" ++ atom_to_list(Node));
                 false ->
@@ -223,7 +223,7 @@ connect_each(Nodes, Cookies, DCPerRing, Acc, AllDCs, Allips, Allports, DCList, B
     OtherDCs = AllDCs -- [lists:nth(Acc, AllDCs)],
     OtherIps = Allips -- [lists:nth(Acc, Allips)],
     OtherPorts = Allports -- [lists:nth(Acc, Allports)],
-    case OtherDCs of 
+    case OtherDCs of
 	[] ->
 	    io:format("Empty dc, no need to connect!~n");
 	_ ->
@@ -352,7 +352,7 @@ connect_each_partial([], _DCPerRing, _Acc, _AllDCs) ->
 connect_each_partial(Nodes, DCPerRing, Acc, AllDCs) ->
     {DCNodes, Rest} = lists:split(DCPerRing, Nodes),
     OtherDCs = AllDCs -- [lists:nth(Acc, AllDCs)],
-    case OtherDCs of 
+    case OtherDCs of
 	[] ->
 	    io:format("Empty dc, no need to connect!~n");
 	_ ->
@@ -401,10 +401,10 @@ get_external_read_dcs(OtherDCs) ->
 			Acc ++ [hd(DcPorts)]
 		end,[],OtherDCs).
 
-% Should return a list where each value is a sigle element tuple with the Dc number
+% Should return a list where each value is a single element tuple with the DC number
 create_biased_key_function(ReplicationFactor,NumDcs) ->
     fun(Key) ->
-	    
+
 	    FirstDc = case Key rem NumDcs of
 			  0 ->
 			      NumDcs;
@@ -426,4 +426,4 @@ create_biased_key_function(ReplicationFactor,NumDcs) ->
 		      end,
 	    ListFun(ListFun,1,[{FirstDc}])
     end.
-    
+

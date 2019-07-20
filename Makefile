@@ -2,14 +2,14 @@
 
 REBAR := rebar3
 
-all: deps compile
+all: compile
 	${REBAR} escriptize
 
 deps:
 	${REBAR} deps
 
-compile: deps
-	(${REBAR} compile)
+compile:
+	${REBAR} compile
 
 clean:
 	${REBAR} clean

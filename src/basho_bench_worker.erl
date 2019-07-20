@@ -21,6 +21,9 @@
 %% -------------------------------------------------------------------
 -module(basho_bench_worker).
 
+-include("basho_bench.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 -behaviour(gen_server).
 
 %% API
@@ -44,8 +47,6 @@
                  parent_pid,
                  worker_pid,
                  sup_id}).
-
--include("basho_bench.hrl").
 
 %% ====================================================================
 %% API
@@ -79,7 +80,7 @@ init([SupChild, Id]) ->
     {A1, A2, A3} =
         case basho_bench_config:get(rng_seed, {42, 23, 12}) of
             {Aa, Ab, Ac} -> {Aa, Ab, Ac};
-            now -> time_compat:timestamp()
+            now -> erlang:timestamp()
         end,
 
     RngSeed = {A1+Id, A2+Id, A3+Id},
@@ -121,7 +122,7 @@ init([SupChild, Id]) ->
     %% message for this worker
     case basho_bench_app:is_running() of
         true ->
-            ?WARN("Restarting crashed worker.\n", []),
+            ?LOG_WARNING("Restarting crashed worker.\n", []),
             gen_server:cast(self(), run);
         false ->
             ok
@@ -146,7 +147,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
             {noreply, State};
 
         _ ->
-            ?ERROR("Worker ~p exited with ~p~n", [Pid, Reason]),
+            ?LOG_ERROR("Worker ~p exited with ~p~n", [Pid, Reason]),
             %% Worker process exited for some other reason; stop this process
             %% as well so that everything gets restarted by the sup
             {stop, normal, State}
@@ -198,7 +199,7 @@ worker_init(State) ->
     %% Trap exits from linked parent process; use this to ensure the driver
     %% gets a chance to cleanup
     process_flag(trap_exit, true),
-    rand_compat:seed(State#state.rng_seed),
+    rand:seed(exsplus, State#state.rng_seed),
     worker_idle_loop(State).
 
 worker_idle_loop(State) ->
@@ -218,16 +219,16 @@ worker_idle_loop(State) ->
         run ->
             case basho_bench_config:get(mode) of
                 max ->
-                    ?INFO("Starting max worker: ~p\n", [self()]),
+                    ?LOG_INFO("Starting max worker: ~p\n", [self()]),
                     max_worker_run_loop(State);
                 {rate, max} ->
-                    ?INFO("Starting max worker: ~p\n", [self()]),
+                    ?LOG_INFO("Starting max worker: ~p\n", [self()]),
                     max_worker_run_loop(State);
                 {rate, Rate} ->
                     %% Calculate mean interarrival time in in milliseconds. A
                     %% fixed rate worker can generate (at max) only 1k req/sec.
                     MeanArrival = 1000 / Rate,
-                    ?INFO("Starting ~w ms/req fixed rate worker: ~p\n", [MeanArrival, self()]),
+                    ?LOG_INFO("Starting ~w ms/req fixed rate worker: ~p\n", [MeanArrival, self()]),
                     rate_worker_run_loop(State, 1 / MeanArrival)
             end
     end.
@@ -236,7 +237,7 @@ worker_next_op2(State, OpTag) ->
    catch (State#state.driver):run(OpTag, State#state.keygen, State#state.valgen,
                                   State#state.driver_state).
 worker_next_op(State) ->
-    Next = element(rand_compat:uniform(State#state.ops_len), State#state.ops),
+    Next = element(rand:uniform(State#state.ops_len), State#state.ops),
     {_Label, OpTag} = Next,
     Start = os:timestamp(),
     Result = worker_next_op2(State, OpTag),
@@ -265,7 +266,7 @@ worker_next_op(State) ->
             %% Give the driver a chance to cleanup
             (catch (State#state.driver):terminate({'EXIT', Reason}, State#state.driver_state)),
 
-            ?DEBUG("Driver ~p crashed: ~p\n", [State#state.driver, Reason]),
+            ?LOG_DEBUG("Driver ~p crashed: ~p\n", [State#state.driver, Reason]),
             case State#state.shutdown_on_error of
                 true ->
                     %% Yes, I know this is weird, but currently this
@@ -285,7 +286,7 @@ worker_next_op(State) ->
         {stop, Reason} ->
             %% Driver (or something within it) has requested that this worker
             %% terminate cleanly.
-            ?INFO("Driver ~p (~p) has requested stop: ~p\n", [State#state.driver, self(), Reason]),
+            ?LOG_INFO("Driver ~p (~p) has requested stop: ~p\n", [State#state.driver, self(), Reason]),
 
             %% Give the driver a chance to cleanup
             (catch (State#state.driver):terminate(normal, State#state.driver_state)),
