@@ -98,7 +98,7 @@ run(txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
     sequential_writes=SeqWrites,
     sequential_reads=SeqReads})->
     StartTime = erlang:system_time(micro_seconds), %% For staleness calc
-    case antidotec_pb:start_transaction(Pid, term_to_binary(OldCommitTime), [{static, false}]) of
+    case antidotec_pb:start_transaction(Pid, OldCommitTime, [{static, false}]) of
         {ok, TxId}->
             %% Perform reads, if this is not a write only transaction.
             {ReadResult, IntKeys}=case NumReads>0 of
@@ -134,8 +134,7 @@ run(txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
                             case antidotec_pb:commit_transaction(Pid, {interactive, TxId}) of
                                 {ok, BCommitTime}->
                                     report_staleness(MS, BCommitTime, StartTime),
-                                    CommitTime=
-                                    binary_to_term(BCommitTime),
+                                    CommitTime= BCommitTime,
                                     {ok, State#state{commit_time=CommitTime}};
                                 E->
                                     {error, {Id, E}, State}
@@ -160,7 +159,7 @@ run(update_only_txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
     measure_staleness=MS,
     sequential_writes=SeqWrites})->
     StartTime = erlang:system_time(micro_seconds), %% For staleness calc
-    case antidotec_pb:start_transaction(Pid, term_to_binary(OldCommitTime), [{static, true}]) of
+    case antidotec_pb:start_transaction(Pid, OldCommitTime, [{static, true}]) of
         {ok, {static, {TimeStamp, TxnProperties}}}->
             UpdateIntKeys = generate_keys(NumUpdates, KeyGen),
             BObjs = multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
@@ -169,8 +168,7 @@ run(update_only_txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
                     case antidotec_pb:commit_transaction(Pid, {static, {TimeStamp, TxnProperties}}) of
                         {ok, BCommitTime}->
                             report_staleness(MS, BCommitTime, StartTime),
-                            CommitTime=
-                                binary_to_term(BCommitTime),
+                            CommitTime = BCommitTime,
                             {ok, State#state{commit_time=CommitTime}};
                         Error ->
                             {error, {Id, Error}, State}
@@ -197,7 +195,7 @@ run(read_only_txn, KeyGen, _ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
         true ->
             IntegerKeys = generate_keys(NumReads, KeyGen),
             BoundObjects = [{list_to_binary(integer_to_list(K)), get_key_type(K, TypeDict), ?BUCKET} || K <- IntegerKeys],
-            case create_read_operations(Pid, BoundObjects, {static, {term_to_binary(OldCommitTime), [{static, true}]}}, SeqReads) of
+            case create_read_operations(Pid, BoundObjects, {static, {OldCommitTime, [{static, true}]}}, SeqReads) of
                 {ok, RS} ->
                     {RS, IntegerKeys};
                 Error ->
@@ -214,8 +212,7 @@ run(read_only_txn, KeyGen, _ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
             case antidotec_pb_socket:get_last_commit_time(Pid) of
                 {ok, BCommitTime} ->
                     report_staleness(MS, BCommitTime, StartTime),
-                    CommitTime =
-                        binary_to_term(BCommitTime),
+                    CommitTime = BCommitTime,
                     {ok, State#state{commit_time = CommitTime}};
                 E ->
                     {error, {Id, E}, State}
