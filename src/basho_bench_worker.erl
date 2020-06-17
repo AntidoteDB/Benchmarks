@@ -234,8 +234,11 @@ worker_idle_loop(State) ->
     end.
 
 worker_next_op2(State, OpTag) ->
-   catch (State#state.driver):run(OpTag, State#state.keygen, State#state.valgen,
-                                  State#state.driver_state).
+    try (State#state.driver):run(OpTag, State#state.keygen, State#state.valgen,
+                                  State#state.driver_state)
+    catch
+        E:M:S -> {'EXIT', {E, M, S}}
+    end.
 worker_next_op(State) ->
     Next = element(rand:uniform(State#state.ops_len), State#state.ops),
     {_Label, OpTag} = Next,
@@ -266,7 +269,7 @@ worker_next_op(State) ->
             %% Give the driver a chance to cleanup
             (catch (State#state.driver):terminate({'EXIT', Reason}, State#state.driver_state)),
 
-            ?LOG_DEBUG("Driver ~p crashed: ~p\n", [State#state.driver, Reason]),
+            ?LOG_ERROR("Driver ~p crashed:\n ~p\n", [State#state.driver, Reason]),
             case State#state.shutdown_on_error of
                 true ->
                     %% Yes, I know this is weird, but currently this
