@@ -131,7 +131,7 @@ run(txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
                     BObjs = multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
                     case create_update_operations(Pid, BObjs, TxId, SeqWrites) of
                         ok->
-                            case antidotec_pb:commit_transaction(Pid, {interactive, TxId}) of
+                            case antidotec_pb:commit_transaction(Pid, TxId) of
                                 {ok, BCommitTime}->
                                     report_staleness(MS, BCommitTime, StartTime),
                                     CommitTime= BCommitTime,
@@ -160,12 +160,12 @@ run(update_only_txn, KeyGen, ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
     sequential_writes=SeqWrites})->
     StartTime = erlang:system_time(micro_seconds), %% For staleness calc
     case antidotec_pb:start_transaction(Pid, OldCommitTime, [{static, true}]) of
-        {ok, {static, {TimeStamp, TxnProperties}}}->
+        {ok, TxId}->
             UpdateIntKeys = generate_keys(NumUpdates, KeyGen),
             BObjs = multi_get_random_param_new(UpdateIntKeys, TypeDict, ValueGen(), undefined, SetSize),
-            case create_update_operations(Pid, BObjs, {static, {TimeStamp, TxnProperties}}, SeqWrites) of
+            case create_update_operations(Pid, BObjs, TxId, SeqWrites) of
                 ok->
-                    case antidotec_pb:commit_transaction(Pid, {static, {TimeStamp, TxnProperties}}) of
+                    case antidotec_pb:commit_transaction(Pid, TxId) of
                         {ok, BCommitTime}->
                             report_staleness(MS, BCommitTime, StartTime),
                             CommitTime = BCommitTime,
@@ -193,9 +193,10 @@ run(read_only_txn, KeyGen, _ValueGen, State=#state{pb_pid=Pid, worker_id=Id,
     StartTime = erlang:system_time(micro_seconds), %% For staleness calc
     ReadResult = case NumReads > 0 of
         true ->
+            {ok, TxId} = antidotec_pb:start_transaction(Pid, OldCommitTime, [{static, true}]),
             IntegerKeys = generate_keys(NumReads, KeyGen),
             BoundObjects = [{list_to_binary(integer_to_list(K)), get_key_type(K, TypeDict), ?BUCKET} || K <- IntegerKeys],
-            case create_read_operations(Pid, BoundObjects, {static, {OldCommitTime, [{static, true}]}}, SeqReads) of
+            case create_read_operations(Pid, BoundObjects, TxId, SeqReads) of
                 {ok, RS} ->
                     {RS, IntegerKeys};
                 Error ->
